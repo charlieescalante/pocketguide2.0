@@ -23,9 +23,9 @@ if "messages" not in st.session_state:
             "role": "system",
             "content": (
                 "You are a tour guide. You give insights into people's surroundings "
-                "using their GPS coordinates or address. It will be a 1-sided tour; "
-                "you won't receive questions from the user. You will simply speak about the area "
-                "as though you've lived there your whole life, providing rich detail and history."
+                "using their address. It will be a 1-sided tour; you won't receive questions "
+                "from the user. You will simply speak about the area as though you've lived "
+                "there your whole life, providing rich detail and history."
             ),
         }
     ]
@@ -51,6 +51,7 @@ if st.session_state.tour_started:
             reverse_location = geolocator.reverse(f"{lat}, {lon}")
             if reverse_location:
                 address = reverse_location.raw['display_name']
+                # Display the resolved address
                 st.write(f"**Resolved Address:** {address}")
             else:
                 address = None
@@ -59,30 +60,28 @@ if st.session_state.tour_started:
             address = None
             st.error(f"Error during reverse geocoding: {e}")
 
-        # Prepare user message with address or coordinates
+        # Send only the address to OpenAI if resolved
         if address:
             user_message = f"I am currently at: {address}."
+            st.session_state.messages.append({"role": "user", "content": user_message})
+
+            # Call OpenAI API with the address
+            with st.spinner("Generating your tour guide narration..."):
+                try:
+                    chatresponse = client.chat.completions.create(
+                        model='chatgpt-4o-latest',
+                        messages=st.session_state.messages,
+                        temperature=1,
+                        n=1,
+                    )
+                    tour_guide_text = chatresponse.choices[0].message.content
+                    st.session_state.messages.append({"role": "assistant", "content": tour_guide_text})
+                    st.write("---")
+                    st.markdown("#### Your PocketGuide says:")
+                    st.write(tour_guide_text)
+                except Exception as e:
+                    st.error(f"Error during AI processing: {e}")
         else:
-            user_message = f"My current GPS coordinates are: Latitude {lat}, Longitude {lon}."
-
-        st.session_state.messages.append({"role": "user", "content": user_message})
-
-        # Call OpenAI API
-        with st.spinner("Generating your tour guide narration..."):
-            try:
-                chatresponse = client.chat.completions.create(
-                    model='chatgpt-4o-latest',
-                    messages=st.session_state.messages,
-                    temperature=1,
-                    n=1,
-                )
-                tour_guide_text = chatresponse.choices[0].message.content
-                st.session_state.messages.append({"role": "assistant", "content": tour_guide_text})
-                st.write("---")
-                st.markdown("#### Your PocketGuide says:")
-                st.write(tour_guide_text)
-            except Exception as e:
-                st.error(f"Error during AI processing: {e}")
-
+            st.warning("Address could not be resolved. Unable to provide insights.")
     else:
         st.warning("Click the button to fetch your geolocation.")
